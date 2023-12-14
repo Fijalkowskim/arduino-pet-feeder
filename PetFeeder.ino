@@ -8,8 +8,7 @@
 #define MAX_PORTIONS 8
 #define FEEDING_MINUTES_INCREMENT 15
 
-class FeedData{
-public:
+struct FeedData{
   short  hour;
   short  minute;
   short  portions;
@@ -17,6 +16,22 @@ public:
 
   FeedData(short _hour, short _minute,short _portions,bool _isActive) : hour(_hour), minute(_minute), portions(_portions), isActive(_isActive) {}
   FeedData() : hour(12), minute(0), portions(1), isActive(false) {}
+};
+struct NextFeedingTime{
+  short hour;
+  short minute;
+  bool tomorrow; 
+  NextFeedingTime(short _hour, short _minute,bool _tomorrow) : hour(_hour), minute(_minute), tomorrow(_tomorrow){}
+  NextFeedingTime() : hour(0), minute(0), tomorrow(true){}
+  String AsString(){
+    String s = "";
+    if(hour < 10) s+="0";
+    s+= String(hour);
+    s+=":";
+    if(minute < 10) s+="0";
+    s+= String(minute);
+    return s;
+    }
 };
 
 class MenuPage{
@@ -27,23 +42,27 @@ class MenuPage{
   virtual void rightBtnClick() = 0;
 };
 //############################################################################################################################
-//Rtc
+//---------Compontents
 ThreeWire rtcWire(11,12,13);
 RtcDS1302<ThreeWire> Rtc(rtcWire);
-RtcDateTime* nextFeedingTime;
+LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
+const int noButtons = 3;
+int buttons[noButtons] = {14,15,16};
+bool btnClicked[noButtons];
+//---------Variables
+
 //Feeding
 FeedData feedData[FEEDING_SLOTS];
 const byte editBlinkingTime = 5;
+bool allFeedingsUnactive = true;
+NextFeedingTime nextFeedingTime;
+
 //Display
-LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
 int screenIndex = 0;
 bool editMode = false;
 MenuPage* menuScreens[MENU_SCREENS];
 MenuPage* currentScreen = nullptr;
-//Buttons
-const int noButtons = 3;
-int buttons[noButtons] = {14,15,16};
-bool btnClicked[noButtons];
+
 //############################################################################################################################
 
 //SetUp//############################################################################################################################
@@ -100,12 +119,12 @@ void setUpRtc(){
     
 }
 void setUpFeedTimes(){
-  feedData[0] = FeedData(15, 30, 3, true);
-  feedData[1] = FeedData(3, 15, 5, true);
+  feedData[0] = FeedData();
+  feedData[1] = FeedData();
   feedData[2] = FeedData();
   feedData[3] = FeedData();
-  nextFeedingTime = nullptr;
-  setNextFeedTime();
+  allFeedingsUnactive = true;
+  findNextFeedingTime();
 }
 //SetUp//############################################################################################################################
 void loop() {
@@ -121,11 +140,14 @@ void displayClock(){
   lcd.print("Time: ");
   lcd.print(getCurrentTime(now));
   lcd.setCursor(0, 1);
-  lcd.print("Next: ");
-  if(nextFeedingTime != nullptr)
-    lcd.print(getCurrentTime(*nextFeedingTime));
-  else
-    lcd.print("NOT SET");
+  lcd.print("Feeding: ");
+  if(allFeedingsUnactive){
+    lcd.print("NONE");
+  }
+  else{  
+    lcd.print(nextFeedingTime.AsString());
+  }
+    
 
 }
 #define countof(a) (sizeof(a) / sizeof(a[0]))
@@ -212,16 +234,39 @@ void handleDisplay(){
 
 //Display//############################################################################################################################
 
-void setNextFeedTime(){
-  // RtcDateTime now = Rtc.GetDateTime();
+void findNextFeedingTime(){
+  if(allFeedingsUnactive){
+    return;
+  } 
+  RtcDateTime now = Rtc.GetDateTime();
+  int nowAsMinutes = now.Hour() * 60 + now.Minute();
+  int currentMinAsMinutes = 1440;
+  int currentMinIndex = -1;
+  for(byte i=0; i < FEEDING_SLOTS; i++){
+    if(!feedData[i].isActive )
+      continue;
+    int feedingAsMinutes = feedData[i].hour * 60 + feedData[i].minute;
+    if(feedingAsMinutes < nowAsMinutes)
+      continue;
+    if(feedingAsMinutes < currentMinAsMinutes){
+      currentMinAsMinutes = feedingAsMinutes;
+      currentMinIndex = i;
+      }
+    }
+    if(currentMinIndex == -1){ //Feeding time is tomorrow
+      for(byte i=0; i < FEEDING_SLOTS; i++){
+        if(!feedData[i].isActive )
+        continue;
+        int feedingAsMinutes = feedData[i].hour * 60 + feedData[i].minute;
+        if(feedingAsMinutes < currentMinAsMinutes){
+        currentMinAsMinutes = feedingAsMinutes;
+        currentMinIndex = i;
+        }
+      }
+      nextFeedingTime = NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, true);
+    }
 
-  //   nextFeedingTime = RtcDateTime(now.Year(),now.Month(),now.Day(),feedData[currentFeedTimeIndex].hour,feedData[currentFeedTimeIndex].minute,now.Second());
-  //   if(now > nextFeedingTime){
-  //     nextFeedingTime = RtcDateTime(now.Year(),now.Month(),now.Day() + 1,feedData[currentFeedTimeIndex].hour,feedData[currentFeedTimeIndex].minute,now.Second());
-  //   }
-  //   currentFeedTimeIndex = currentFeedTimeIndex + 1 == FEEDING_SLOTS ? 0 : currentFeedTimeIndex + 1;
-  //   if(!feedData[currentFeedTimeIndex].isActive)
-  //     currentFeedTimeIndex = 0;
+    nextFeedingTime = NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, false);
 }
 
 
@@ -281,7 +326,8 @@ class FeedingMenuPage: public MenuPage{
   }
   void StopEditing(){
     editState = NONE;
-      editMode = false;
+    editMode = false;
+    findNextFeedingTime();
   }
   virtual void selectBtnClick(){
     switch(editState){
@@ -289,15 +335,25 @@ class FeedingMenuPage: public MenuPage{
       editMode = true;
       editState = ACTIVE;  
       break;
-      case ACTIVE:
-      if(!feedData[index].isActive)
+      case ACTIVE:   
+      if(!feedData[index].isActive){ //Disactivate feeding
         StopEditing();
-      else {
+        if(!allFeedingsUnactive){
+          for(byte i=0;i<FEEDING_SLOTS;i++){
+            if(feedData[i].isActive) return;
+          }
+          allFeedingsUnactive = true;
+        }
+      }      
+      else { //Activate feeding
         blink = true;
         blinkIndex = 0;
         editState = HOUR;
+        if(allFeedingsUnactive){
+          allFeedingsUnactive = false;
+        }    
       }
-        
+         
       break;
       case HOUR:
       editState = MINUTE;
