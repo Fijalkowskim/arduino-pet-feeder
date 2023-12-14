@@ -16,7 +16,7 @@ public:
   bool isActive;
 
   FeedData(short _hour, short _minute,short _portions,bool _isActive) : hour(_hour), minute(_minute), portions(_portions), isActive(_isActive) {}
-  FeedData() : hour(12), minute(0), portions(0), isActive(false) {}
+  FeedData() : hour(12), minute(0), portions(1), isActive(false) {}
 };
 
 class MenuPage{
@@ -30,17 +30,16 @@ class MenuPage{
 //Rtc
 ThreeWire rtcWire(11,12,13);
 RtcDS1302<ThreeWire> Rtc(rtcWire);
-RtcDateTime nextFeedTime;
+RtcDateTime* nextFeedingTime;
 //Feeding
-FeedData feedTimes [FEEDING_SLOTS];
-int currentFeedTimeIndex = 0;
-const int editBlinkingTime = 5;
+FeedData feedData[FEEDING_SLOTS];
+const byte editBlinkingTime = 5;
 //Display
-LiquidCrystal lcd(2, 3, 4, 5, 6, 7); //Informacja o podłączeniu nowego wyświetlacz
-int displayIndex = 0;
+LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
+int screenIndex = 0;
 bool editMode = false;
-MenuPage* displays[MENU_SCREENS];
-MenuPage* currentDisplay = nullptr;
+MenuPage* menuScreens[MENU_SCREENS];
+MenuPage* currentScreen = nullptr;
 //Buttons
 const int noButtons = 3;
 int buttons[noButtons] = {14,15,16};
@@ -101,10 +100,11 @@ void setUpRtc(){
     
 }
 void setUpFeedTimes(){
-  feedTimes[0] = FeedData(15, 30, 3, true);
-  feedTimes[1] = FeedData(3, 15, 5, true);
-  feedTimes[2] = FeedData();
-  feedTimes[3] = FeedData();
+  feedData[0] = FeedData(15, 30, 3, true);
+  feedData[1] = FeedData(3, 15, 5, true);
+  feedData[2] = FeedData();
+  feedData[3] = FeedData();
+  nextFeedingTime = nullptr;
   setNextFeedTime();
 }
 //SetUp//############################################################################################################################
@@ -122,7 +122,10 @@ void displayClock(){
   lcd.print(getCurrentTime(now));
   lcd.setCursor(0, 1);
   lcd.print("Next: ");
-  lcd.print(getCurrentTime(nextFeedTime));
+  if(nextFeedingTime != nullptr)
+    lcd.print(getCurrentTime(*nextFeedingTime));
+  else
+    lcd.print("NOT SET");
 
 }
 #define countof(a) (sizeof(a) / sizeof(a[0]))
@@ -158,27 +161,27 @@ const char* printDateTime(const RtcDateTime& dt)
 void buttonClicked(int btnIdx){
   switch(btnIdx){
     case 0: //Select
-      if(currentDisplay != nullptr)
-        currentDisplay->selectBtnClick();
+      if(currentScreen != nullptr)
+        currentScreen->selectBtnClick();
         
     break;
     case 1: //Left
-      if(editMode && currentDisplay != nullptr){
-        currentDisplay->leftBtnClick();
+      if(editMode && currentScreen != nullptr){
+        currentScreen->leftBtnClick();
       }
       else{
-      displayIndex = displayIndex - 1 < 0 ? MENU_SCREENS - 1 : displayIndex - 1;
-      currentDisplay = displays[displayIndex];
+      screenIndex = screenIndex - 1 < 0 ? MENU_SCREENS - 1 : screenIndex - 1;
+      currentScreen = menuScreens[screenIndex];
       }
       
     break;
     case 2: //Right
-    if(editMode && currentDisplay != nullptr){
-        currentDisplay->rightBtnClick();
+    if(editMode && currentScreen != nullptr){
+        currentScreen->rightBtnClick();
     }
     else{
-      displayIndex = displayIndex + 1 >= MENU_SCREENS ? 0 : displayIndex + 1;
-      currentDisplay = displays[displayIndex];
+      screenIndex = screenIndex + 1 >= MENU_SCREENS ? 0 : screenIndex + 1;
+      currentScreen = menuScreens[screenIndex];
     }
       
     break;
@@ -202,23 +205,23 @@ void handleButtons(){
 
 //Display//############################################################################################################################
 void handleDisplay(){
-  if(currentDisplay == nullptr)
+  if(currentScreen == nullptr)
   return;
-  currentDisplay->displayLoop();
+  currentScreen->displayLoop();
 }
 
 //Display//############################################################################################################################
 
 void setNextFeedTime(){
-  RtcDateTime now = Rtc.GetDateTime();
+  // RtcDateTime now = Rtc.GetDateTime();
 
-    nextFeedTime = RtcDateTime(now.Year(),now.Month(),now.Day(),feedTimes[currentFeedTimeIndex].hour,feedTimes[currentFeedTimeIndex].minute,now.Second());
-    if(now > nextFeedTime){
-      nextFeedTime = RtcDateTime(now.Year(),now.Month(),now.Day() + 1,feedTimes[currentFeedTimeIndex].hour,feedTimes[currentFeedTimeIndex].minute,now.Second());
-    }
-    currentFeedTimeIndex = currentFeedTimeIndex + 1 == FEEDING_SLOTS ? 0 : currentFeedTimeIndex + 1;
-    if(!feedTimes[currentFeedTimeIndex].isActive)
-      currentFeedTimeIndex = 0;
+  //   nextFeedingTime = RtcDateTime(now.Year(),now.Month(),now.Day(),feedData[currentFeedTimeIndex].hour,feedData[currentFeedTimeIndex].minute,now.Second());
+  //   if(now > nextFeedingTime){
+  //     nextFeedingTime = RtcDateTime(now.Year(),now.Month(),now.Day() + 1,feedData[currentFeedTimeIndex].hour,feedData[currentFeedTimeIndex].minute,now.Second());
+  //   }
+  //   currentFeedTimeIndex = currentFeedTimeIndex + 1 == FEEDING_SLOTS ? 0 : currentFeedTimeIndex + 1;
+  //   if(!feedData[currentFeedTimeIndex].isActive)
+  //     currentFeedTimeIndex = 0;
 }
 
 
@@ -254,26 +257,47 @@ class FeedingMenuPage: public MenuPage{
   byte blinkIndex = 0;
   public:
   virtual void displayLoop(){
-    displayFeedingData();
-    if(editState != NONE)
-    {
-      blinkIndex++;
-      if(blinkIndex >= editBlinkingTime){
-        blink = !blink;
-        blinkIndex = true;
-      }
-      
-    }   
+    if(editState == ACTIVE){
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("     Active:");
+      lcd.setCursor(0,1);
+      if(feedData[index].isActive)
+        lcd.print("       YES");
+      else
+        lcd.print("       NO");
+    }
+    else{
+      displayFeedingData();
+      if(editState != NONE){
+        blinkIndex++;
+        if(blinkIndex >= editBlinkingTime){
+         blink = !blink;
+         blinkIndex = true;
+        }
+      }  
+    }
+     
+  }
+  void StopEditing(){
+    editState = NONE;
+      editMode = false;
   }
   virtual void selectBtnClick(){
     switch(editState){
       case NONE:
       editMode = true;
-      editState = HOUR;
-      blink = true;
-      blinkIndex = 0;
+      editState = ACTIVE;  
       break;
       case ACTIVE:
+      if(!feedData[index].isActive)
+        StopEditing();
+      else {
+        blink = true;
+        blinkIndex = 0;
+        editState = HOUR;
+      }
+        
       break;
       case HOUR:
       editState = MINUTE;
@@ -286,8 +310,7 @@ class FeedingMenuPage: public MenuPage{
       blinkIndex = 0;
       break;
       case PORTIONS:
-      editState = NONE;
-      editMode = false;
+      StopEditing();
       break;
     }
 
@@ -297,14 +320,17 @@ class FeedingMenuPage: public MenuPage{
     switch(editState){
       case NONE:
       break;
+      case ACTIVE:
+      feedData[index].isActive = !feedData[index].isActive;
+      break;
       case HOUR:
-      feedTimes[index].hour = feedTimes[index].hour - 1 < 0 ? 23 : feedTimes[index].hour - 1;
+      feedData[index].hour = feedData[index].hour - 1 < 0 ? 23 : feedData[index].hour - 1;
       break;
       case MINUTE:
-      feedTimes[index].minute = feedTimes[index].minute - FEEDING_MINUTES_INCREMENT < 0 ? 60 - FEEDING_MINUTES_INCREMENT : feedTimes[index].minute - FEEDING_MINUTES_INCREMENT;
+      feedData[index].minute = feedData[index].minute - FEEDING_MINUTES_INCREMENT < 0 ? 60 - FEEDING_MINUTES_INCREMENT : feedData[index].minute - FEEDING_MINUTES_INCREMENT;
       break;
       case PORTIONS:
-      feedTimes[index].portions = feedTimes[index].portions - 1 < 1 ? MAX_PORTIONS : feedTimes[index].portions - 1 ;
+      feedData[index].portions = feedData[index].portions - 1 < 1 ? MAX_PORTIONS : feedData[index].portions - 1 ;
       break;
     }
 
@@ -313,16 +339,19 @@ class FeedingMenuPage: public MenuPage{
     switch(editState){
       case NONE:
       break;
+      case ACTIVE:
+      feedData[index].isActive = !feedData[index].isActive;
+      break;
       case HOUR:
-      feedTimes[index].hour = feedTimes[index].hour + 1 > 23 ? 0 : feedTimes[index].hour + 1;
+      feedData[index].hour = feedData[index].hour + 1 > 23 ? 0 : feedData[index].hour + 1;
       ResetBlink();
       break;
       case MINUTE:
-      feedTimes[index].minute = feedTimes[index].minute + FEEDING_MINUTES_INCREMENT > 59 ? 0 : feedTimes[index].minute + FEEDING_MINUTES_INCREMENT;
+      feedData[index].minute = feedData[index].minute + FEEDING_MINUTES_INCREMENT > 59 ? 0 : feedData[index].minute + FEEDING_MINUTES_INCREMENT;
       ResetBlink();
       break;
       case PORTIONS:
-      feedTimes[index].portions = feedTimes[index].portions + 1 > MAX_PORTIONS ? 1 : feedTimes[index].portions + 1 ;
+      feedData[index].portions = feedData[index].portions + 1 > MAX_PORTIONS ? 1 : feedData[index].portions + 1 ;
       ResetBlink();
       break;
     }
@@ -336,13 +365,12 @@ class FeedingMenuPage: public MenuPage{
   }
 
   void displayFeedingData(){
-    FeedData feedData = feedTimes[index];
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("    Feeding ");
     lcd.print(index+1);
     lcd.setCursor(0,1);
-    if(!feedData.isActive)
+    if(!feedData[index].isActive)
     {    
       lcd.print("   Not Active");
       return;
@@ -351,8 +379,8 @@ class FeedingMenuPage: public MenuPage{
     if(blink && editState == HOUR)
       lcd.print("  ");
     else{
-      if(feedData.hour < 10) lcd.print("0");
-      lcd.print(feedData.hour);
+      if(feedData[index].hour < 10) lcd.print("0");
+      lcd.print(feedData[index].hour);
     }
       
     lcd.print(":");
@@ -361,15 +389,15 @@ class FeedingMenuPage: public MenuPage{
     if(blink && editState == MINUTE)
       lcd.print("  ");
     else{
-      if(feedData.minute < 10) lcd.print("0");
-      lcd.print(feedData.minute);
+      if(feedData[index].minute < 10) lcd.print("0");
+      lcd.print(feedData[index].minute);
     }    
     
     lcd.print(" ");
     if(blink && editState == PORTIONS)
       lcd.print(" ");
     else
-      lcd.print(feedData.portions);
+      lcd.print(feedData[index].portions);
 
     lcd.print(" PORTIONS");
 
@@ -380,11 +408,11 @@ class FeedingMenuPage: public MenuPage{
 //Feed DISPLAY//############################################################################################################################
 
 void setUpDisplays(){
-    displays[0] = new HomePage();
-    displays[1] = new FeedingMenuPage(0);
-    displays[2] = new FeedingMenuPage(1);
-    displays[3] = new FeedingMenuPage(2);
-    displays[4] = new FeedingMenuPage(3);
-    currentDisplay = displays[0];
+    menuScreens[0] = new HomePage();
+    menuScreens[1] = new FeedingMenuPage(0);
+    menuScreens[2] = new FeedingMenuPage(1);
+    menuScreens[3] = new FeedingMenuPage(2);
+    menuScreens[4] = new FeedingMenuPage(3);
+    currentScreen = menuScreens[0];
 }
 
