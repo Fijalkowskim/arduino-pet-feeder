@@ -55,7 +55,8 @@ bool btnClicked[noButtons];
 FeedData feedData[FEEDING_SLOTS];
 const byte editBlinkingTime = 5;
 bool allFeedingsUnactive = true;
-NextFeedingTime nextFeedingTime;
+NextFeedingTime* nextFeedingTime;
+bool feedingNow = false;
 
 //Display
 int screenIndex = 0;
@@ -129,6 +130,7 @@ void setUpFeedTimes(){
 //SetUp//############################################################################################################################
 void loop() {
   handleButtons();
+  handleFeeding();
   handleDisplay();
   delay(REFRESH_RATE);
 }
@@ -144,8 +146,8 @@ void displayClock(){
   if(allFeedingsUnactive){
     lcd.print("NONE");
   }
-  else{  
-    lcd.print(nextFeedingTime.AsString());
+  else if(nextFeedingTime != nullptr){  
+    lcd.print(nextFeedingTime->AsString());
   }
     
 
@@ -176,6 +178,10 @@ const char* printDateTime(const RtcDateTime& dt)
             dt.Minute(),
             dt.Second() );
     Serial.print(datestring);
+}
+void handleFeeding(){
+  if(nextFeedingTime == nullptr)
+  return;
 }
 //Clock//############################################################################################################################
 
@@ -236,6 +242,7 @@ void handleDisplay(){
 
 void findNextFeedingTime(){
   if(allFeedingsUnactive){
+    nextFeedingTime = nullptr;
     return;
   } 
   RtcDateTime now = Rtc.GetDateTime();
@@ -263,10 +270,10 @@ void findNextFeedingTime(){
         currentMinIndex = i;
         }
       }
-      nextFeedingTime = NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, true);
+      nextFeedingTime = new NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, true);
     }
 
-    nextFeedingTime = NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, false);
+    nextFeedingTime = new NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, false);
 }
 
 
