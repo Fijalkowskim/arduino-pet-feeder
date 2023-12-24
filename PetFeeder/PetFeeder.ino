@@ -57,6 +57,7 @@ const byte editBlinkingTime = 5;
 bool allFeedingsUnactive = true;
 NextFeedingTime* nextFeedingTime;
 bool feedingNow = false;
+int hourOfFeedingSet = 0;
 
 //Display
 int screenIndex = 0;
@@ -182,6 +183,18 @@ const char* printDateTime(const RtcDateTime& dt)
 void handleFeeding(){
   if(nextFeedingTime == nullptr)
   return;
+  RtcDateTime now = Rtc.GetDateTime();
+  int hour = now.Hour();
+  if(nextFeedingTime->tomorrow && hour < hourOfFeedingSet){
+    nextFeedingTime->tomorrow = false;
+  }
+  if(!nextFeedingTime->tomorrow){
+     int nowAsMinutes = now.Hour() * 60 + now.Minute();
+     int feedingTimeAsMinutes = nextFeedingTime->hour * 60 + nextFeedingTime->minute;
+     if (nowAsMinutes >= feedingTimeAsMinutes){
+      //Handle feeding
+     }
+  }
 }
 //Clock//############################################################################################################################
 
@@ -271,6 +284,7 @@ void findNextFeedingTime(){
         }
       }
       nextFeedingTime = new NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, true);
+      hourOfFeedingSet = now.Hour();
     }
 
     nextFeedingTime = new NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, false);
