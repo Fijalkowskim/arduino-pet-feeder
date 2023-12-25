@@ -323,6 +323,12 @@ class FeedingMenuPage: public MenuPage{
   byte blinkIndex = 0;
   public:
   virtual void displayLoop(){
+    if(feedingNow){
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("     Feeding");
+      return;
+    }
     if(editState == ACTIVE){
       lcd.clear();
       lcd.setCursor(0,0);
