@@ -13,16 +13,11 @@ struct FeedData{
   short  minute;
   short  portions;
   bool isActive;
-
-  FeedData(short _hour, short _minute,short _portions,bool _isActive) : hour(_hour), minute(_minute), portions(_portions), isActive(_isActive) {}
-  FeedData() : hour(12), minute(0), portions(1), isActive(false) {}
-};
-struct NextFeedingTime{
-  short hour;
-  short minute;
   bool tomorrow; 
-  NextFeedingTime(short _hour, short _minute,bool _tomorrow) : hour(_hour), minute(_minute), tomorrow(_tomorrow){}
-  NextFeedingTime() : hour(0), minute(0), tomorrow(true){}
+
+  FeedData(short _hour, short _minute,short _portions,bool _isActive) : hour(_hour), minute(_minute), portions(_portions), isActive(_isActive), tomorrow(false) {}
+  FeedData() : hour(12), minute(0), portions(1), isActive(false), tomorrow(false) {}
+
   String AsString(){
     String s = "";
     if(hour < 10) s+="0";
@@ -55,9 +50,10 @@ bool btnClicked[noButtons];
 FeedData feedData[FEEDING_SLOTS];
 const byte editBlinkingTime = 5;
 bool allFeedingsUnactive = true;
-NextFeedingTime* nextFeedingTime;
+FeedData* nextFeedingData;
 bool feedingNow = false;
 int hourOfFeedingSet = 0;
+const byte feedingPortionTime;
 
 //Display
 int screenIndex = 0;
@@ -147,8 +143,8 @@ void displayClock(){
   if(allFeedingsUnactive){
     lcd.print("NONE");
   }
-  else if(nextFeedingTime != nullptr){  
-    lcd.print(nextFeedingTime->AsString());
+  else if(nextFeedingData != nullptr){  
+    lcd.print(nextFeedingData->AsString());
   }
     
 
@@ -180,23 +176,36 @@ const char* printDateTime(const RtcDateTime& dt)
             dt.Second() );
     Serial.print(datestring);
 }
+
+//Clock//############################################################################################################################
+
+//Feeding//############################################################################################################################
+
 void handleFeeding(){
-  if(nextFeedingTime == nullptr)
+  if(nextFeedingData == nullptr)
   return;
   RtcDateTime now = Rtc.GetDateTime();
   int hour = now.Hour();
-  if(nextFeedingTime->tomorrow && hour < hourOfFeedingSet){
-    nextFeedingTime->tomorrow = false;
+  if(nextFeedingData->tomorrow && hour < hourOfFeedingSet){
+    nextFeedingData->tomorrow = false;
   }
-  if(!nextFeedingTime->tomorrow){
+  if(!nextFeedingData->tomorrow){
      int nowAsMinutes = now.Hour() * 60 + now.Minute();
-     int feedingTimeAsMinutes = nextFeedingTime->hour * 60 + nextFeedingTime->minute;
+     int feedingTimeAsMinutes = nextFeedingData->hour * 60 + nextFeedingData->minute;
      if (nowAsMinutes >= feedingTimeAsMinutes){
       //Handle feeding
+      feedingNow = true;
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Feeding...");
+      //Activate servo
+      delay(feedingPortionTime * nextFeedingData->portions);
+      //Disactivate servo
+      feedingNow = false;
      }
   }
 }
-//Clock//############################################################################################################################
+//Feeding//############################################################################################################################
 
 //Buttons//############################################################################################################################
 void buttonClicked(int btnIdx){
@@ -255,7 +264,7 @@ void handleDisplay(){
 
 void findNextFeedingTime(){
   if(allFeedingsUnactive){
-    nextFeedingTime = nullptr;
+    nextFeedingData = nullptr;
     return;
   } 
   RtcDateTime now = Rtc.GetDateTime();
@@ -283,11 +292,14 @@ void findNextFeedingTime(){
         currentMinIndex = i;
         }
       }
-      nextFeedingTime = new NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, true);
+      nextFeedingData = &feedData[currentMinIndex];
+      nextFeedingData->tomorrow = true;
       hourOfFeedingSet = now.Hour();
+      return;
     }
 
-    nextFeedingTime = new NextFeedingTime(feedData[currentMinIndex].hour, feedData[currentMinIndex].minute, false);
+    nextFeedingData = &feedData[currentMinIndex];
+    nextFeedingData->tomorrow = false;
 }
 
 
