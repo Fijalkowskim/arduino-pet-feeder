@@ -206,10 +206,20 @@ void handleFeeding(){
   }
 }
 void feed(){
+  if(nextFeedingData == nullptr) return;
   feedingNow = true;
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Feeding...");
+  lcd.setCursor(0,1);
+  if(nextFeedingData->hour < 10) lcd.print("0");
+  lcd.print(nextFeedingData->hour);
+  lcd.print(":");
+  if(nextFeedingData->minute < 10) lcd.print("0");
+  lcd.print(nextFeedingData->minute);
+  lcd.print(" ");
+  lcd.print(nextFeedingData->portions);
+  lcd.print(" PORTIONS");
   servo.write(0);
   delay(feedingPortionTime * nextFeedingData->portions);
   servo.write(180);
@@ -326,12 +336,12 @@ void handleDisplay(){
   return;
   currentScreen->displayLoop();
 }
+void goToMainMenu(){
+  screenIndex = 0;
+  currentScreen = menuScreens[screenIndex];
+}
 
 //Display//############################################################################################################################
-
-
-
-
 
 //Feed DISPLAY//############################################################################################################################
 
@@ -379,6 +389,7 @@ class FeedingMenuPage: public MenuPage{
     editState = NONE;
     editMode = false;
     findNextFeedingTime();
+    //goToMainMenu();  
   }
   virtual void selectBtnClick(){
     switch(editState){
