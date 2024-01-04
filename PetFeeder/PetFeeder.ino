@@ -193,18 +193,77 @@ void handleFeeding(){
      int nowAsMinutes = now.Hour() * 60 + now.Minute();
      int feedingTimeAsMinutes = nextFeedingData->hour * 60 + nextFeedingData->minute;
      if (nowAsMinutes >= feedingTimeAsMinutes){
-      //Handle feeding
-      feedingNow = true;
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Feeding...");
-      //Activate servo
-      delay(feedingPortionTime * nextFeedingData->portions);
-      //Disactivate servo
-      feedingNow = false;
+      feed();
      }
   }
 }
+void feed(){
+  feedingNow = true;
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Feeding...");
+  //Activate servo
+  delay(feedingPortionTime * nextFeedingData->portions);
+  //Disactivate servo
+  feedingNow = false;
+  findNextFeedingTime();
+}
+void findNextFeedingTime(){
+  if(allFeedingsUnactive){
+    nextFeedingData = nullptr;
+    return;
+  } 
+  RtcDateTime now = Rtc.GetDateTime();
+  int nowAsMinutes = now.Hour() * 60 + now.Minute();
+  int currentMinAsMinutes = 1440;
+  int currentMinIndex = -1;
+  for(byte i=0; i < FEEDING_SLOTS; i++){
+    if(!feedData[i].isActive )
+      continue;
+    int feedingAsMinutes = feedData[i].hour * 60 + feedData[i].minute;
+    if(feedingAsMinutes < nowAsMinutes)
+      continue;
+    if(feedingAsMinutes < currentMinAsMinutes){
+      currentMinAsMinutes = feedingAsMinutes;
+      currentMinIndex = i;
+      }
+    }
+    if(currentMinIndex == -1){ //Feeding time is tomorrow
+      for(byte i=0; i < FEEDING_SLOTS; i++){
+        if(!feedData[i].isActive )
+        continue;
+        int feedingAsMinutes = feedData[i].hour * 60 + feedData[i].minute;
+        if(feedingAsMinutes < currentMinAsMinutes){
+        currentMinAsMinutes = feedingAsMinutes;
+        currentMinIndex = i;
+        }
+      }
+      nextFeedingData = &feedData[currentMinIndex];
+      nextFeedingData->tomorrow = true;
+      hourOfFeedingSet = now.Hour();
+      return;
+    }
+
+    nextFeedingData = &feedData[currentMinIndex];
+    nextFeedingData->tomorrow = false;
+}
+
+
+class HomePage: public MenuPage{
+  public:
+  virtual void displayLoop(){
+    displayClock();
+  }
+  virtual void selectBtnClick(){
+
+  }
+  virtual void leftBtnClick(){
+
+  }
+  virtual void rightBtnClick(){
+
+  }
+};
 //Feeding//############################################################################################################################
 
 //Buttons//############################################################################################################################
@@ -262,62 +321,7 @@ void handleDisplay(){
 
 //Display//############################################################################################################################
 
-void findNextFeedingTime(){
-  if(allFeedingsUnactive){
-    nextFeedingData = nullptr;
-    return;
-  } 
-  RtcDateTime now = Rtc.GetDateTime();
-  int nowAsMinutes = now.Hour() * 60 + now.Minute();
-  int currentMinAsMinutes = 1440;
-  int currentMinIndex = -1;
-  for(byte i=0; i < FEEDING_SLOTS; i++){
-    if(!feedData[i].isActive )
-      continue;
-    int feedingAsMinutes = feedData[i].hour * 60 + feedData[i].minute;
-    if(feedingAsMinutes < nowAsMinutes)
-      continue;
-    if(feedingAsMinutes < currentMinAsMinutes){
-      currentMinAsMinutes = feedingAsMinutes;
-      currentMinIndex = i;
-      }
-    }
-    if(currentMinIndex == -1){ //Feeding time is tomorrow
-      for(byte i=0; i < FEEDING_SLOTS; i++){
-        if(!feedData[i].isActive )
-        continue;
-        int feedingAsMinutes = feedData[i].hour * 60 + feedData[i].minute;
-        if(feedingAsMinutes < currentMinAsMinutes){
-        currentMinAsMinutes = feedingAsMinutes;
-        currentMinIndex = i;
-        }
-      }
-      nextFeedingData = &feedData[currentMinIndex];
-      nextFeedingData->tomorrow = true;
-      hourOfFeedingSet = now.Hour();
-      return;
-    }
 
-    nextFeedingData = &feedData[currentMinIndex];
-    nextFeedingData->tomorrow = false;
-}
-
-
-class HomePage: public MenuPage{
-  public:
-  virtual void displayLoop(){
-    displayClock();
-  }
-  virtual void selectBtnClick(){
-
-  }
-  virtual void leftBtnClick(){
-
-  }
-  virtual void rightBtnClick(){
-
-  }
-};
 
 
 
