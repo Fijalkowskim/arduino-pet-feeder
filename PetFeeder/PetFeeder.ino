@@ -1,6 +1,7 @@
 #include <LiquidCrystal.h>
 #include <ThreeWire.h>
 #include <RtcDS1302.h>
+#include <Servo.h>
 
 #define FEEDING_SLOTS 4
 #define MENU_SCREENS 5
@@ -44,6 +45,8 @@ LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
 const int noButtons = 3;
 int buttons[noButtons] = {14,15,16};
 bool btnClicked[noButtons];
+int servoPin = 8;
+Servo servo;
 //---------Variables
 
 //Feeding
@@ -53,7 +56,7 @@ bool allFeedingsUnactive = true;
 FeedData* nextFeedingData;
 bool feedingNow = false;
 int hourOfFeedingSet = 0;
-const byte feedingPortionTime;
+int feedingPortionTime = 600; //milliseconds
 
 //Display
 int screenIndex = 0;
@@ -71,6 +74,7 @@ void setup(){
   setUpRtc();
   setUpFeedTimes();
   setUpDisplays();
+  setUpServo();
 }
 void setUpButtons(){
 for(int i=0; i<noButtons;i++){
@@ -123,6 +127,10 @@ void setUpFeedTimes(){
   feedData[3] = FeedData();
   allFeedingsUnactive = true;
   findNextFeedingTime();
+}
+void setUpServo(){
+  servo.attach(servoPin);
+  servo.write(180);
 }
 //SetUp//############################################################################################################################
 void loop() {
@@ -202,9 +210,9 @@ void feed(){
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Feeding...");
-  //Activate servo
+  servo.write(0);
   delay(feedingPortionTime * nextFeedingData->portions);
-  //Disactivate servo
+  servo.write(180);
   feedingNow = false;
   findNextFeedingTime();
 }
@@ -221,7 +229,7 @@ void findNextFeedingTime(){
     if(!feedData[i].isActive )
       continue;
     int feedingAsMinutes = feedData[i].hour * 60 + feedData[i].minute;
-    if(feedingAsMinutes < nowAsMinutes)
+    if(feedingAsMinutes <= nowAsMinutes)
       continue;
     if(feedingAsMinutes < currentMinAsMinutes){
       currentMinAsMinutes = feedingAsMinutes;
