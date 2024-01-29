@@ -57,6 +57,7 @@ FeedData* nextFeedingData;
 bool feedingNow = false;
 int hourOfFeedingSet = 0;
 int feedingPortionTime = 600; //milliseconds
+bool disableFeeding = false;
 
 //Display
 int screenIndex = 0;
@@ -140,23 +141,7 @@ void loop() {
   delay(REFRESH_RATE);
 }
 //Clock//############################################################################################################################
-void displayClock(){
-  RtcDateTime now = Rtc.GetDateTime();
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("Time: ");
-  lcd.print(getCurrentTime(now));
-  lcd.setCursor(0, 1);
-  lcd.print("Feeding: ");
-  if(allFeedingsUnactive){
-    lcd.print("NONE");
-  }
-  else if(nextFeedingData != nullptr){  
-    lcd.print(nextFeedingData->AsString());
-  }
-    
 
-}
 #define countof(a) (sizeof(a) / sizeof(a[0]))
 
 String getCurrentTime(const RtcDateTime& dt){
@@ -190,7 +175,7 @@ const char* printDateTime(const RtcDateTime& dt)
 //Feeding//############################################################################################################################
 
 void handleFeeding(){
-  if(nextFeedingData == nullptr)
+  if(nextFeedingData == nullptr || disableFeeding)
   return;
   RtcDateTime now = Rtc.GetDateTime();
   int hour = now.Hour();
@@ -267,21 +252,6 @@ void findNextFeedingTime(){
 }
 
 
-class HomePage: public MenuPage{
-  public:
-  virtual void displayLoop(){
-    displayClock();
-  }
-  virtual void selectBtnClick(){
-
-  }
-  virtual void leftBtnClick(){
-
-  }
-  virtual void rightBtnClick(){
-
-  }
-};
 //Feeding//############################################################################################################################
 
 //Buttons//############################################################################################################################
@@ -346,8 +316,151 @@ void goToMainMenu(){
 //Feed DISPLAY//############################################################################################################################
 
 enum FeedEditState{
-  NONE, ACTIVE, HOUR, MINUTE, PORTIONS
+  NONE, ACTIVE, HOUR, MINUTE, SECOND, PORTIONS
 };
+
+class HomePage: public MenuPage{
+  private: 
+  FeedEditState editState = NONE;
+  bool blink = false;
+  byte blinkIndex = 0;
+  byte newHour, newMinute, newSecond;
+  public:
+  virtual void displayLoop(){
+    if(editState == NONE)
+      displayMainMenu();
+    else
+    {
+      displayEditTime();
+      if(editState != NONE){
+        blinkIndex++;
+        if(blinkIndex >= editBlinkingTime){
+         blink = !blink;
+         blinkIndex = true;
+        }
+      }  
+      }
+  }
+  virtual void selectBtnClick(){
+    switch(editState){
+      case NONE:
+      editState = HOUR;  
+      editMode = true;
+      disableFeeding = true;
+      blink = true;
+      blinkIndex = 0;
+      newHour = Rtc.GetDateTime().Hour();
+      newMinute = Rtc.GetDateTime().Minute();
+      newSecond = Rtc.GetDateTime().Second();
+      break; 
+      case HOUR:
+      editState = MINUTE;
+      blink = true;
+      blinkIndex = 0;
+      break;
+      case MINUTE:
+      editState = SECOND;
+      blink = true;
+      blinkIndex = 0;
+      break;
+      case SECOND:
+      StopEditing();
+      break;
+    }
+
+  }
+  virtual void leftBtnClick(){
+     switch(editState){
+      case HOUR:
+      newHour = newHour - 1 < 0 ? 23 : newHour - 1;
+      ResetBlink();
+      break;
+      case MINUTE:
+      newMinute = newMinute - 1 < 0 ? 59 : newMinute - 1;
+      ResetBlink();
+      break;
+      case SECOND:
+      newSecond = newSecond - 1 < 0 ? 59 : newSecond - 1;
+      ResetBlink();
+      break;
+    }
+
+  }
+  virtual void rightBtnClick(){
+    switch(editState){
+      case HOUR:
+      newHour = newHour + 1 > 23 ? 0 : newHour + 1;
+      ResetBlink();
+      break;
+      case MINUTE:
+      newMinute = newMinute + 1 > 59 ? 0 : newMinute + 1;
+      ResetBlink();
+      break;
+      case SECOND:
+      newSecond = newSecond + 1 > 59 ? 0 : newSecond + 1;
+      ResetBlink();
+      break;
+    }
+
+  }
+  void StopEditing(){
+    String newTimeString = String(newHour) + ":" +  String(newMinute) + ":" + String(newSecond);
+    RtcDateTime newTime = RtcDateTime(__DATE__,newTimeString.c_str());
+    Rtc.SetDateTime(newTime);
+    editState = NONE;
+    findNextFeedingTime();
+    editMode = false;
+    disableFeeding = false;
+  }
+   void ResetBlink(){
+    blink = false;
+    blinkIndex = 0;
+  }
+  void displayMainMenu(){
+  RtcDateTime now = Rtc.GetDateTime();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Time: ");
+  lcd.print(getCurrentTime(now));
+  lcd.setCursor(0, 1);
+  lcd.print("Feeding: ");
+  if(allFeedingsUnactive){
+    lcd.print("NONE");
+  }
+  else if(nextFeedingData != nullptr){  
+    lcd.print(nextFeedingData->AsString());
+  }
+  
+}
+  void displayEditTime(){
+    lcd.clear();
+    lcd.setCursor(0,0);
+    if(blink && editState == HOUR)
+      lcd.print("  ");
+    else{
+      if(newHour < 10) lcd.print("0");
+      lcd.print(newHour);
+    }
+    lcd.print(":");
+    if(blink && editState == MINUTE)
+      lcd.print("  ");
+    else{
+      if(newMinute < 10) lcd.print("0");
+      lcd.print(newMinute);
+    }  
+    lcd.print(":");
+    if(blink && editState == SECOND)
+      lcd.print("  ");
+    else{
+      if(newSecond < 10) lcd.print("0");
+      lcd.print(newSecond);
+    }    
+    lcd.setCursor(0,1);
+    lcd.print("Enter new time");
+  }
+};
+
+
 
 class FeedingMenuPage: public MenuPage{
   private: 
@@ -443,12 +556,15 @@ class FeedingMenuPage: public MenuPage{
       break;
       case HOUR:
       feedData[index].hour = feedData[index].hour - 1 < 0 ? 23 : feedData[index].hour - 1;
+      ResetBlink();
       break;
       case MINUTE:
       feedData[index].minute = feedData[index].minute - FEEDING_MINUTES_INCREMENT < 0 ? 60 - FEEDING_MINUTES_INCREMENT : feedData[index].minute - FEEDING_MINUTES_INCREMENT;
+      ResetBlink();
       break;
       case PORTIONS:
       feedData[index].portions = feedData[index].portions - 1 < 1 ? MAX_PORTIONS : feedData[index].portions - 1 ;
+      ResetBlink();
       break;
     }
 
